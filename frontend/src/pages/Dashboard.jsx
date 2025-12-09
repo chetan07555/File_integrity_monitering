@@ -11,6 +11,7 @@ const Dashboard = () => {
   const [events, setEvents] = useState([]);
   const [stats, setStats] = useState(null);
   const [selectedEvent, setSelectedEvent] = useState(null);
+  const [criticalEvent, setCriticalEvent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
     fileName: '',
@@ -39,6 +40,20 @@ const Dashboard = () => {
       socketService.off('fileEvent');
     };
   }, []);
+
+  // Track the most recent critical modification event for alerting
+  useEffect(() => {
+    if (!events || events.length === 0) {
+      setCriticalEvent(null);
+      return;
+    }
+
+    const recentCritical = events.find(
+      (ev) => ev.eventType === 'MODIFY' && ev.severity === 'CRITICAL'
+    );
+
+    setCriticalEvent(recentCritical || null);
+  }, [events]);
 
   const loadEvents = async (searchFilters = {}) => {
     try {
@@ -83,6 +98,12 @@ const Dashboard = () => {
 
   const handleCloseModal = () => {
     setSelectedEvent(null);
+  };
+
+  const handleRestore = async () => {
+    // Refresh data after a restore so UI reflects reverted content/events
+    await loadEvents(filters);
+    await loadStats();
   };
 
   return (
@@ -151,6 +172,35 @@ const Dashboard = () => {
           </div>
         )}
 
+        {/* Critical Alert Banner */}
+        {criticalEvent && (
+          <div className="mb-6 bg-red-50 border border-red-200 text-red-900 rounded-xl shadow-md p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="mt-1">
+                <FiAlertCircle className="text-red-600 text-2xl" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-wide text-red-700">Critical modification detected</p>
+                <p className="text-base font-medium">
+                  {criticalEvent.fileName} was modified at{' '}
+                  {new Date(criticalEvent.createdAt).toLocaleString()}.
+                </p>
+                <p className="text-sm text-red-800 break-all">
+                  Path: {criticalEvent.filePath}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => handleViewDetails(criticalEvent)}
+                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition"
+              >
+                View details
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Filters */}
         <Filters filters={filters} setFilters={setFilters} onSearch={handleSearch} />
 
@@ -181,7 +231,11 @@ const Dashboard = () => {
 
         {/* Event Details Modal */}
         {selectedEvent && (
-          <EventModal event={selectedEvent} onClose={handleCloseModal} />
+          <EventModal
+            event={selectedEvent}
+            onClose={handleCloseModal}
+            onRestore={handleRestore}
+          />
         )}
       </div>
     </div>

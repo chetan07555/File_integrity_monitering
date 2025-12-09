@@ -14,11 +14,20 @@ const EventTable = ({ events, onViewDetails }) => {
 
   const getEventTypeColor = (eventType) => {
     const colors = {
-      CREATE: 'text-green-600',
-      MODIFY: 'text-red-600',
-      DELETE: 'text-yellow-600',
+      CREATE: 'bg-green-100 text-green-800',
+      MODIFY: 'bg-blue-100 text-blue-800',
+      DELETE: 'bg-red-100 text-red-800',
     };
-    return colors[eventType] || 'text-gray-600';
+    return colors[eventType] || 'bg-gray-100 text-gray-800';
+  };
+
+  const getEventTypeIcon = (eventType) => {
+    const icons = {
+      CREATE: '✅',
+      MODIFY: '✏️',
+      DELETE: '🗑️',
+    };
+    return icons[eventType] || '📄';
   };
 
   if (events.length === 0) {
@@ -74,8 +83,9 @@ const EventTable = ({ events, onViewDetails }) => {
                   </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={`text-sm font-semibold ${getEventTypeColor(event.eventType)}`}>
-                    {event.eventType}
+                  <span className={`px-3 py-1 inline-flex items-center space-x-1 text-xs leading-5 font-semibold rounded-full ${getEventTypeColor(event.eventType)}`}>
+                    <span>{getEventTypeIcon(event.eventType)}</span>
+                    <span>{event.eventType}</span>
                   </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">

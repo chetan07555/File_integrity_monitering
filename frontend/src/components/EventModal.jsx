@@ -1,8 +1,44 @@
-import React from 'react';
-import { FiX, FiClock, FiUser, FiHash, FiFileText } from 'react-icons/fi';
+import React, { useState } from 'react';
+import { FiX, FiClock, FiUser, FiHash, FiFileText, FiRotateCcw, FiCopy } from 'react-icons/fi';
+import api from '../services/api';
+import { toast } from 'react-hot-toast';
 
-const EventModal = ({ event, onClose }) => {
+const EventModal = ({ event, onClose, onRestore }) => {
+  const [isRestoring, setIsRestoring] = useState(false);
+  
   if (!event) return null;
+
+  const handleRestore = async () => {
+    if (!window.confirm('Are you sure you want to restore this file to its previous state? This will overwrite the current content.')) {
+      return;
+    }
+
+    setIsRestoring(true);
+    try {
+      const response = await api.post(`/events/${event._id}/restore`);
+      toast.success(response.data.message || 'File restored successfully!');
+      if (onRestore) {
+        onRestore();
+      }
+      onClose();
+    } catch (error) {
+      const errorMessage = error.response?.data?.message || 'Failed to restore file';
+      toast.error(errorMessage);
+      console.error('Restore error:', error);
+    } finally {
+      setIsRestoring(false);
+    }
+  };
+
+  const handleCopyPath = async () => {
+    try {
+      await navigator.clipboard.writeText(event.filePath);
+      toast.success('File path copied');
+    } catch (err) {
+      toast.error('Copy failed');
+      console.error('Clipboard error:', err);
+    }
+  };
 
   const getStatusColor = (status) => {
     const colors = {
@@ -50,7 +86,16 @@ const EventModal = ({ event, onClose }) => {
               </div>
               <div>
                 <p className="text-sm text-gray-600">File Path</p>
-                <p className="font-medium text-gray-900 break-all">{event.filePath}</p>
+                <div className="flex items-center gap-2">
+                  <p className="font-medium text-gray-900 break-all">{event.filePath}</p>
+                  <button
+                    onClick={handleCopyPath}
+                    className="p-2 rounded-md border border-gray-200 hover:bg-gray-100 transition"
+                    title="Copy file path"
+                  >
+                    <FiCopy className="text-gray-600" />
+                  </button>
+                </div>
               </div>
               <div>
                 <p className="text-sm text-gray-600">Event Type</p>
@@ -192,7 +237,19 @@ const EventModal = ({ event, onClose }) => {
           </div>
         </div>
 
-        <div className="sticky bottom-0 bg-gray-100 px-6 py-4 flex justify-end">
+        <div className="sticky bottom-0 bg-gray-100 px-6 py-4 flex justify-between">
+          <div>
+            {event.eventType === 'MODIFY' && (
+              <button
+                onClick={handleRestore}
+                disabled={isRestoring}
+                className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                <FiRotateCcw className={isRestoring ? 'animate-spin' : ''} />
+                {isRestoring ? 'Restoring...' : 'Restore File'}
+              </button>
+            )}
+          </div>
           <button
             onClick={onClose}
             className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"

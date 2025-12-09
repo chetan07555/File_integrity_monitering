@@ -6,6 +6,7 @@ import { Server } from 'socket.io';
 import connectDB from './config/database.js';
 import authRoutes from './routes/authRoutes.js';
 import fileEventRoutes from './routes/fileEventRoutes.js';
+import protectionRoutes from './routes/protectionRoutes.js';
 import errorHandler from './middleware/errorHandler.js';
 import WatcherService from './services/WatcherService.js';
 import logger from './utils/logger.js';
@@ -75,6 +76,7 @@ app.get('/', (req, res) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/events', fileEventRoutes);
+app.use('/api/protect', protectionRoutes);
 
 // Error handler (must be last)
 app.use(errorHandler);

@@ -4,7 +4,7 @@ import fs from 'fs';
 import HashService from './HashService.js';
 import MetadataService from './MetadataService.js';
 import DiffService from './DiffService.js';
-import EmailService from './EmailService.js';
+
 import FileEvent from '../models/FileEvent.js';
 import logger from '../utils/logger.js';
 
@@ -12,7 +12,10 @@ class WatcherService {
   constructor() {
     this.watcher = null;
     this.io = null;
-    this.fileCache = new Map(); // Cache to store previous file states
+    this.fileCache = new Map(); // Cache to store current file states { hash, content }
+    this.oldContentCache = new Map(); // Cache to store previous file content for restoration
+    this.recentlyCreated = new Map(); // Track recently created files to avoid duplicate events
+    this.backupDirectory = path.resolve(process.env.PROTECTED_BACKUP_DIR || path.join(process.cwd(), 'protected_backups'));
   }
 
   /**
@@ -48,11 +51,15 @@ class WatcherService {
 
     // Initialize chokidar watcher
     this.watcher = chokidar.watch(this.watchDirectory, {
-      ignored: /(^|[\/\\])\../, // Ignore dotfiles
+      ignored: (filePath) => {
+        const isDot = /(^|[/\\])\../.test(filePath);
+        const isBackup = filePath.startsWith(this.backupDirectory);
+        return isDot || isBackup;
+      },
       persistent: true,
-      ignoreInitial: false,
+      ignoreInitial: true,
       awaitWriteFinish: {
-        stabilityThreshold: 1000,
+        stabilityThreshold: 2000,
         pollInterval: 100,
       },
     });
@@ -86,9 +93,45 @@ class WatcherService {
     });
 
     // Ready event
-    this.watcher.on('ready', () => {
+    this.watcher.on('ready', async () => {
       logger.info('File watcher is ready and monitoring for changes');
+      // Populate cache with existing files
+      await this.populateCache();
     });
+  }
+
+  /**
+   * Populate cache with existing files
+   */
+  async populateCache() {
+    try {
+      logger.info('Populating cache with existing files...');
+      const files = fs.readdirSync(this.watchDirectory, { withFileTypes: true });
+      
+      for (const file of files) {
+        if (file.isFile() && !file.name.startsWith('.')) {
+          const filePath = path.join(this.watchDirectory, file.name);
+          try {
+            const hash = await HashService.calculateFileHash(filePath);
+            
+            if (DiffService.isTextFile(filePath)) {
+              const content = await DiffService.readFileContent(filePath);
+              this.fileCache.set(filePath, { hash, content });
+            } else {
+              this.fileCache.set(filePath, { hash, content: null });
+            }
+            
+            logger.debug(`Cached existing file: ${file.name}`);
+          } catch (error) {
+            logger.error(`Error caching file ${file.name}: ${error.message}`);
+          }
+        }
+      }
+      
+      logger.info(`Cache populated with ${this.fileCache.size} files`);
+    } catch (error) {
+      logger.error(`Error populating cache: ${error.message}`);
+    }
   }
 
   /**
@@ -110,6 +153,12 @@ class WatcherService {
       } else {
         this.fileCache.set(filePath, { hash, content: null });
       }
+
+      // Mark as recently created to prevent duplicate MODIFY event
+      this.recentlyCreated.set(filePath, Date.now());
+      setTimeout(() => {
+        this.recentlyCreated.delete(filePath);
+      }, 3000); // Clear after 3 seconds
 
       // Create file event
       const fileEvent = await FileEvent.create({
@@ -154,6 +203,13 @@ class WatcherService {
    */
   async handleFileChange(filePath) {
     try {
+      // Skip if file was just created
+      const createdTime = this.recentlyCreated.get(filePath);
+      if (createdTime && (Date.now() - createdTime < 3000)) {
+        logger.info(`Skipping change event for recently created file: ${filePath}`);
+        return;
+      }
+
       logger.info(`File changed: ${filePath}`);
 
       const fileName = path.basename(filePath);
@@ -173,14 +229,17 @@ class WatcherService {
       };
 
       if (DiffService.isTextFile(filePath)) {
-        const oldContent = cachedData.content || '';
+        const oldContent = cachedData.content !== undefined ? cachedData.content : '';
         const newContent = await DiffService.readFileContent(filePath);
         
         logger.debug(`Old content length: ${oldContent.length}, New content length: ${newContent.length}`);
-        logger.debug(`Old content: "${oldContent.substring(0, 100)}"`);
-        logger.debug(`New content: "${newContent.substring(0, 100)}"`);
         
         diffSummary = DiffService.calculateDiff(oldContent, newContent);
+        
+        // Store old content in restoration cache before updating
+        if (oldContent) {
+          this.oldContentCache.set(filePath, oldContent);
+        }
         
         // Update cache with new content
         this.fileCache.set(filePath, { hash: newHash, content: newContent });

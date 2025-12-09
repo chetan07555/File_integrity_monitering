@@ -5,6 +5,7 @@ import {
   getFileHistory,
   getEventStats,
   deleteFileEvent,
+  restoreFile,
 } from '../controllers/fileEventController.js';
 import { protect, authorize } from '../middleware/auth.js';
 
@@ -20,5 +21,6 @@ router.get('/history/:filePath', getFileHistory);
 
 // Admin only routes
 router.delete('/:id', authorize('admin'), deleteFileEvent);
+router.post('/:id/restore', restoreFile);
 
 export default router;
